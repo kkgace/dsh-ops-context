@@ -36,12 +36,35 @@ const pathInWorkspace = (path) => posix.isAbsolute(path) ? path : posix.resolve(
 const filesystem = makeFilesystem();
 
 test('workspace paths remain relative and reject traversal/absolute paths', () => {
-  assert.equal(resolveWorkspaceRelative('/Users/alice/project', 'src/file.ts'), 'src/file.ts');
-  assert.equal(resolveWorkspaceRelative('/Users/alice/project', '.'), '.');
-  assert.throws(() => resolveWorkspaceRelative('/Users/alice/project', '../secret'), /工作区外/);
-  assert.throws(() => resolveWorkspaceRelative('/Users/alice/project', '/Users/alice/secret'), /绝对路径/);
-  assert.throws(() => resolveWorkspaceRelative('/Users/alice/project', '..\\secret'), /工作区外/);
-  assert.throws(() => resolveWorkspaceRelative('/Users/alice/project', 'x\0y'), /相对路径/);
+  // Same logical assertions must hold for BOTH platform root styles.
+  for (const root of ['/Users/alice/project', 'C:\\Users\\alice\\project']) {
+    assert.equal(resolveWorkspaceRelative(root, 'src/file.ts'), 'src/file.ts');
+    assert.equal(resolveWorkspaceRelative(root, '.'), '.');
+    assert.throws(() => resolveWorkspaceRelative(root, '../secret'), /工作区外/);
+    assert.throws(() => resolveWorkspaceRelative(root, '/Users/alice/secret'), /绝对路径/);
+    assert.throws(() => resolveWorkspaceRelative(root, '..\\secret'), /工作区外/);
+    assert.throws(() => resolveWorkspaceRelative(root, 'x\0y'), /相对路径/);
+  }
+});
+
+test('resolveWorkspaceRelative accepts any non-empty root as an opaque prefix', () => {
+  // Windows drive root, UNC root, and plain POSIX root all pass the root check.
+  assert.equal(resolveWorkspaceRelative('C:\\Users\\me\\proj', 'a\\b.ts'), 'a/b.ts');
+  assert.equal(resolveWorkspaceRelative('//server/share/proj', 'x.txt'), 'x.txt');
+  assert.equal(resolveWorkspaceRelative('/opt/proj', 'x.txt'), 'x.txt');
+  // Empty / missing root is rejected.
+  assert.throws(() => resolveWorkspaceRelative('', 'x'), /有效的工作区根目录/);
+  assert.throws(() => resolveWorkspaceRelative(undefined, 'x'), /有效的工作区根目录/);
+});
+
+test('Windows absolute and UNC inputs are rejected on any platform', () => {
+  const root = '/Users/alice/project';
+  assert.throws(() => resolveWorkspaceRelative(root, 'C:secret'), /绝对路径/);
+  assert.throws(() => resolveWorkspaceRelative(root, 'C:\\secret'), /绝对路径/);
+  assert.throws(() => resolveWorkspaceRelative(root, '\\\\server\\share'), /绝对路径/);
+  assert.throws(() => resolveWorkspaceRelative(root, '/abs/secret'), /绝对路径/);
+  // Lowercase drive letter too.
+  assert.throws(() => resolveWorkspaceRelative(root, 'c:/secret'), /绝对路径/);
 });
 
 test('filesystem canonical paths are checked against symlink escapes', async () => {

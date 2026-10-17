@@ -29,5 +29,5 @@ export function apply(ctx, config) {
       disposeTools();
       disposeProjection();
     };
-  }, 'dsh-context-lite-macos:tools');
+  }, 'dsh-ops-context:tools');
 }

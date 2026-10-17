@@ -1,4 +1,4 @@
 - insert:
-    - id: dsh-context-lite-macos
-      name: dsh-context-lite-macos
+    - id: dsh-ops-context
+      name: dsh-ops-context
       config: {}

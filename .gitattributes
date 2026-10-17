@@ -1,0 +1,5 @@
+# Line-ending policy for cross-platform checkouts (P2 of PLATFORM-PLAN).
+* text=auto eol=lf
+*.tgz binary
+*.png binary
+*.jpg binary

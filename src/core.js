@@ -41,21 +41,29 @@ export function clipText(value, maxChars) {
   return { text: `${chars.slice(0, keep).join('')}${marker}`, truncated: true };
 }
 
-/** Accept only relative paths contained in the session workspace. */
+/** Accept only relative paths contained in the session workspace.
+ *
+ *  The workspace root is an opaque prefix owned by the Host (which carries
+ *  platform path semantics: POSIX `/` on Linux/macOS, `C:\` on Windows).
+ *  This plugin never parses the root; it validates only the *logical*
+ *  relative space in platform-neutral form (forward slashes). Authoritative
+ *  containment is enforced by `assertWorkspaceTarget` via Host fs.resolve/contains. */
 export function resolveWorkspaceRelative(root, requested = '.') {
-  if (typeof root !== 'string' || !posix.isAbsolute(root)) throw new Error('当前会话没有有效的工作区根目录');
+  // Trust the Host-provided workspace root: it just must be a non-empty string.
+  // We deliberately do NOT assert POSIX-absolute here so Windows drive roots
+  // (`C:\Users\...`) are accepted. The root is never parsed by this plugin.
+  if (typeof root !== 'string' || root.length === 0) throw new Error('当前会话没有有效的工作区根目录');
   if (typeof requested !== 'string' || requested.includes('\0')) throw new Error('path 必须是工作区内的相对路径');
   if (requested.length > 256) throw new Error('path 最多 256 个字符');
+  // Normalize Windows separators to logical forward slashes.
   const normalizedInput = requested.replaceAll('\\', '/');
-  if (posix.isAbsolute(normalizedInput)) throw new Error('不允许访问工作区外的绝对路径');
+  // Reject absolute forms on any platform: POSIX `/`, Windows drive `C:`, UNC `//server/...`.
+  if (/^\/|^[A-Za-z]:/u.test(normalizedInput)) throw new Error('不允许访问工作区外的绝对路径');
   const normalized = posix.normalize(normalizedInput || '.');
   if (normalized === '..' || normalized.startsWith('../')) throw new Error('不允许访问工作区外的路径');
-  const absolute = posix.resolve(root, normalized);
-  const relative = posix.relative(root, absolute);
-  if (relative === '..' || relative.startsWith('../') || posix.isAbsolute(relative)) {
-    throw new Error('不允许访问工作区外的路径');
-  }
-  return relative || '.';
+  // A normalized path without a leading `..` cannot escape its root, so the
+  // logical validation above is sufficient and platform-neutral.
+  return normalized;
 }
 
 export async function assertWorkspaceTarget(filesystem, rootPath, absolutePath, signal) {

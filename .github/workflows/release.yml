@@ -8,7 +8,23 @@ permissions:
   contents: write
 
 jobs:
+  # Gate the release on the full cross-platform test matrix: the tag's tgz
+  # is only published after the exact tagged code passes on all three OS.
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run check
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,9 +36,6 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Run tests
-        run: npm run check
-
       - name: Pack plugin
         run: |
           mkdir -p packages
@@ -33,15 +46,18 @@ jobs:
         with:
           name: ${{ github.ref_name }}
           body: |
-            DSH Host plugin **dsh-context-lite-macos** — bounded context tools (`context_search` / `context_read`) for DSH web & desktop.
+            DSH Host plugin **dsh-ops-context** — bounded context tools (`context_search` / `context_read`) for DSH web & desktop, cross-platform (Linux / macOS / Windows).
 
             Highlights (see `RELEASE-NOTES.md` and `docs/` for full measured benchmarks):
             - Per-call context cap: worst case 135,538 → 455 tokens (298:1)
             - Full-scan self-attestation + same-line occurrence aggregation
             - Credential paths: name-visible, content always blocked
             - Same-turn read dedup (measured 52.5% saving)
+            - **Cross-platform**: workspace root is treated as an opaque prefix — Windows drive roots (`C:\...`) are accepted. One tgz, no native deps.
             - Same test suite vs 0.1.1: task-level tokens 442,228 → 37,419 (−91.5%), calls 26 → 5
 
-            Install: `dsh plugin --profile web install ./dsh-context-lite-macos-0.4.0.tgz` (requires DSH >=0.2.0-rc.2 <0.3.0, restart to take effect)
+            Install (web/desktop use the same mechanism):
+            `dsh plugin --profile web install ./dsh-ops-context-0.5.0.tgz`
+            Requires DSH >=0.2.0-rc.2, restart to take effect.
           files: |
             packages/*.tgz
