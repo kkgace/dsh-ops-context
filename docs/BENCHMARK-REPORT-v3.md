@@ -11,7 +11,7 @@
 - **语料** `bench-corpus2`（7 文件，确定性构造）：真实插件源码 `src/core.js`（281 行）、`src/marker.js`、`config/nodes.yaml`（30 行）、`data/big-bundle.js`（**182KB 单行**压缩 bundle）、`config/README.md`、假密钥夹具 `app/.env.local` + `app/id_rsa`（内容均为 FAKE）。
 - **埋词（ground truth 由脚本独立生成）**：`QUANTUM_TARGET_7741` 共 **3 行 / 5 次**（nodes.yaml:12×1、big-bundle.js:1×3、marker.js:5×1）。
 - **任务书（两组逐字相同）**：T1 全域定位埋词；T2 读取 core.js 240–250 行；T3 同参连读 nodes.yaml 1–10 行两次；T4 判定 app/ 凭据文件（只报名，不读内容）。
-- **A 组**（原生）：read/grep/bash/glob，**9 次**信息获取调用；**B 组**（插件）：context_search/context_read，**26 次**调用。每次调用的完整返回原文 1:1 落盘 `/tmp/bench2/logs/`（A-01~09、B-01~26），供 tiktoken 计数。
+- **A 组**（原生）：read/grep/bash/glob，**9 次**信息获取调用；**B 组**（插件）：context_search/context_read，**26 次**调用。每次调用的完整返回原文 1:1 落盘 `<bench-logs>/`（A-01~09、B-01~26），供 tiktoken 计数。
 
 ## 2. 正确性（对照 ground truth）
 
@@ -68,10 +68,10 @@
 ## 5. 可复现
 
 ```sh
-node /root/workdata/bench/ground-truth.mjs     # 标准答案
-node /root/workdata/bench/log-tokens.mjs       # 35 份调用日志 tiktoken 计数
-node /root/workdata/bench/extract-usage.mjs    # projcache 真实 API usage
-ls /tmp/bench2/logs/                           # A-01~09 / B-01~26 调用原文
+node <benchmark-scripts>/ground-truth.mjs     # 标准答案
+node <benchmark-scripts>/log-tokens.mjs       # 35 份调用日志 tiktoken 计数
+node <benchmark-scripts>/extract-usage.mjs    # projcache 真实 API usage
+ls <bench-logs>/                           # A-01~09 / B-01~26 调用原文
 ```
 
 局限：单次采样（模型行为随机性未做多样本统计）；A 组模型未触发大输出路径（原生无上限的风险未在本例呈现，由 3.2 节理论值补充）；B 组模型的"较真"策略是任务级成本主因之一，换模型/提示可能显著改变倍率。

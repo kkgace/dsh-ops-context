@@ -55,10 +55,10 @@
 ## 5. 可复现
 
 ```sh
-node /root/workdata/bench/ground-truth.mjs    # 标准答案
-node /root/workdata/bench/log-tokens.mjs      # 10 份调用日志 tiktoken 计数
-node /root/workdata/bench/extract-usage.mjs   # projcache 真实 API usage
-ls /tmp/bench2/logs/                          # A-01~05 / B-01~05 调用原文
+node <benchmark-scripts>/ground-truth.mjs    # 标准答案
+node <benchmark-scripts>/log-tokens.mjs      # 10 份调用日志 tiktoken 计数
+node <benchmark-scripts>/extract-usage.mjs   # projcache 真实 API usage
+ls <bench-logs>/                          # A-01~05 / B-01~05 调用原文
 ```
 
 局限：单次采样；output（模型 thinking）具有随机性，B''本轮偏高即为例证；0.1.1 基线取自 v3 同任务书实测（2026-10-15，26 次调用、442,228 token），两组模型与框架一致。

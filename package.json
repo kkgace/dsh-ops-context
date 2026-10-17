@@ -18,13 +18,30 @@
     "README.md",
     "LICENSE"
   ],
-  "os": [
-    "linux",
-    "darwin",
-    "win32"
-  ],
   "engines": {
     "node": "^22.19 || >=24"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "context",
+    "workspace",
+    "bounded-search",
+    "read-dedup",
+    "cross-platform"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kkgace/dsh-ops-context.git"
+  },
+  "homepage": "https://github.com/kkgace/dsh-ops-context",
+  "author": {
+    "name": "kkgace",
+    "url": "https://github.com/kkgace"
+  },
+  "bugs": {
+    "url": "https://github.com/kkgace/dsh-ops-context/issues"
   },
   "scripts": {
     "test": "node --test",
