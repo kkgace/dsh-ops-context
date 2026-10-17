@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ['V*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run tests
+        run: npm run check
+
+      - name: Pack plugin
+        run: |
+          mkdir -p packages
+          npm pack --ignore-scripts --pack-destination packages
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: |
+            DSH Host plugin **dsh-context-lite-macos** — bounded context tools (`context_search` / `context_read`) for DSH web & desktop.
+
+            Highlights (see `RELEASE-NOTES.md` and `docs/` for full measured benchmarks):
+            - Per-call context cap: worst case 135,538 → 455 tokens (298:1)
+            - Full-scan self-attestation + same-line occurrence aggregation
+            - Credential paths: name-visible, content always blocked
+            - Same-turn read dedup (measured 52.5% saving)
+            - Same test suite vs 0.1.1: task-level tokens 442,228 → 37,419 (−91.5%), calls 26 → 5
+
+            Install: `dsh plugin --profile web install ./dsh-context-lite-macos-0.4.0.tgz` (requires DSH >=0.2.0-rc.2 <0.3.0, restart to take effect)
+          files: |
+            packages/*.tgz
