@@ -1,0 +1,4 @@
+- insert:
+    - id: dsh-context-lite-macos
+      name: dsh-context-lite-macos
+      config: {}
