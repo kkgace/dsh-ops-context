@@ -8,7 +8,7 @@
 - 同轮重复读取**去重**（实测省 52.5%）；
 - **跨平台**：一个纯 JS 包同时支持 Linux / macOS / Windows 的 DSH 网页版与桌面版，无原生依赖、无分平台编译。
 
-> **当前版本**：V0.5（package `dsh-ops-context@0.5.0`）
+> **当前版本**：V0.5.1（package `dsh-ops-context@0.5.1`，可靠性加固版）
 > **作者**：[kkgace](https://github.com/kkgace) · **License**：MIT（[LICENSE](LICENSE)）
 > **状态**：公开试用中（收集反馈 2 天），之后提交 npm 官方供 DSH 插件市场下载安装。
 
@@ -54,9 +54,9 @@ cd dsh-ops-context && npm install && npm pack --ignore-scripts --pack-destinatio
 #    c) （npm 上线后）npm pack dsh-ops-context
 
 # 2. 安装到目标 DSH profile
-dsh plugin --profile web install ./packages/dsh-ops-context-0.5.0.tgz
+dsh plugin --profile web install ./packages/dsh-ops-context-0.5.1.tgz
 #    桌面版使用其对应 profile，例如：
-dsh plugin --profile desktop install ./packages/dsh-ops-context-0.5.0.tgz
+dsh plugin --profile desktop install ./packages/dsh-ops-context-0.5.1.tgz
 
 # 3. 重启 DSH（插件不热加载，重启后新代码才生效）
 ```
@@ -125,7 +125,7 @@ dsh plugin --profile desktop install ./packages/dsh-ops-context-0.5.0.tgz
 | macOS 桌面/网页 | ✅ V0.5 | CI `macos-latest` 真机跑测试 + 桌面冒烟清单（[docs/SMOKE-CHECKLIST.md](docs/SMOKE-CHECKLIST.md)） |
 | Windows 桌面/网页 | ✅ V0.5 | 工作区根不透明化（Windows 盘符根可用）+ CI `windows-latest` 真机跑测试 |
 
-测试矩阵：`.github/workflows/test.yml` 在 ubuntu/macos/windows × node 22/24 跑同一套 22 项单测；Release 工作流先跑三平台测试、全绿才发布。
+测试矩阵：`.github/workflows/test.yml` 在 ubuntu/macos/windows × node 22/24 跑同一套 30 项测试（22 单元 + 4 可靠性回归 + 4 真实 Node-fs e2e）；Release 工作流先跑三平台测试、全绿才发布。
 
 ## 维护与升级
 
@@ -133,7 +133,7 @@ dsh plugin --profile desktop install ./packages/dsh-ops-context-0.5.0.tgz
 
 ```sh
 npm install
-npm test          # 22/22 单测（含 POSIX + Windows 双风格路径矩阵）
+npm test          # 30/30（含 POSIX + Windows 双风格路径矩阵、可靠性回归、真实 Node-fs e2e）
 npm run check     # 语法 + 单测
 npm pack          # 生成 packages/*.tgz
 ```
@@ -143,7 +143,7 @@ npm pack          # 生成 packages/*.tgz
 ```sh
 # 下载新版本 tgz（GitHub Release 或 npm）
 dsh plugin --profile web remove dsh-ops-context
-dsh plugin --profile web install ./packages/dsh-ops-context-0.x.0.tgz
+dsh plugin --profile web install ./packages/dsh-ops-context-0.5.1.tgz
 # 重启 DSH 生效
 ```
 
@@ -151,7 +151,7 @@ dsh plugin --profile web install ./packages/dsh-ops-context-0.x.0.tgz
 
 ```sh
 dsh plugin --profile web remove dsh-context-lite-macos   # 移除旧 entry
-dsh plugin --profile web install ./packages/dsh-ops-context-0.5.0.tgz
+dsh plugin --profile web install ./packages/dsh-ops-context-0.5.1.tgz
 # 重启 DSH
 ```
 
@@ -173,7 +173,8 @@ dsh plugin --profile web install ./packages/dsh-ops-context-0.5.0.tgz
 | 0.1.2 | "搜索不完整"提示列出被跳过路径 |
 | 0.2.0 | 同行 ×次数聚合、全量扫描自证标记、凭据文件名可见（内容必拦截）、预算放宽 |
 | 0.4.0（V0.4） | 首个 GitHub 发布版本（包名 dsh-context-lite-macos） |
-| **0.5.0（V0.5）** | 跨平台版：工作区根不透明化（Windows 盘符根可用）、包名 dsh-ops-context、CI 三平台真机矩阵、peer 契约放宽至 >=0.2.0-rc.2 |
+| 0.5.0（V0.5） | 跨平台版：工作区根不透明化（Windows 盘符根可用）、包名 dsh-ops-context、CI 三平台真机矩阵、peer 契约放宽至 >=0.2.0-rc.2 |
+| **0.5.1（V0.5.1）** | 跨客户端可靠性加固：失败目录不再虚报"无遗漏"、Host 条目字段归一化（type/size 缺失不漏扫）、尾部换行无幻影行、`startLine` 在 Host 省略 offset 时稳定回退；单测 22→30（含真实 Node-fs e2e） |
 
 ## License
 

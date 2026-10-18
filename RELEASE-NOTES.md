@@ -1,5 +1,24 @@
 # Release Notes
 
+## V0.5.1（package dsh-ops-context@0.5.1）— 2026-10-18
+
+跨客户端**可靠性加固**：针对不同 DSH 客户端（web/desktop、不同 DSH 构建）Host 服务契约差异做防御性处理，确保插件在字段缺失/实现不同时**优雅降级**而非静默漏扫或虚报完整。
+
+### 修复
+
+- **全量自证不再说谎**：某目录 `list()` 读取失败时现在标记 `truncated=true`（结果带"搜索不完整"说明）——此前会静默跳过该目录却仍打"无遗漏"标记，跨客户端下这是最危险的静默缺陷。
+- **Host 条目字段归一化**：`type` 缺失时不再丢弃子树——目录形态条目（`type=directory` 或尾斜杠名）与"不可搜索扩展名"的未知条目走**目录探测**，带可搜索扩展名的未知条目直接读文件；`size` 缺失则跳过 >1MB 预过滤而不崩溃。
+- **尾部换行幻影行**：匹配行计数按 Host 报告的 `page.lines` 截断，`"a\nb\n"` 不再被误判为 3 行产生第 3 个幻影命中。
+- **`context_read` 的 `startLine` 稳定**：Host 省略 `page.offset` 时回退到请求的 `offset`，绝不返回 `undefined`；`stat`/`read` 结果经 `safeStat`/`safeReadPage` 归一化，缺失 `version/offset/lines` 字段均可降级。
+
+### 测试
+
+单测 22 → **30**：+4 可靠性回归（失败 list 不虚报 / 无 type·size 条目不漏扫 / 尾部换行无幻影 / read offset 回退）+ 4 个**真实 Node-fs 驱动**的 e2e 场景（`test/real-fs.test.js`，模拟 Host 字段缺失）。CI 三平台矩阵不变。
+
+> 说明：0.5.1 是 0.5.0 代码基线之上的可靠性补丁，跨平台能力（Windows 盘符根、单一 tgz）不变。本机 web profile 已装 0.5.1 并重启生效。
+
+---
+
 ## V0.5（package dsh-ops-context@0.5.0）— 2026-10-19
 
 跨平台版本：一个纯 JS 包同时支持 **Linux / macOS / Windows** 的 DSH 网页版与桌面版。包名由 `dsh-context-lite-macos` 更名为中性的 `dsh-ops-context`（旧包 ≤0.4.0 为历史版本）。
