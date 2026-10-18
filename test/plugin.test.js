@@ -491,3 +491,82 @@ test('tool execution requires an active workspace and scopes requests to its ses
     /活动 DSH 会话/,
   );
 });
+
+/* ---- Reliability regression matrix (0.5.1) ---- */
+
+test('search: a failed list() in any directory disables the full-scan attestation', async () => {
+  const workspaceFiles = {
+    async list(_scope, path) {
+      if (path === '.') return { entries: [
+        { name: 'ok.js', type: 'file', size: 4 },
+        { name: 'bad', type: 'directory' },
+      ], truncated: false };
+      if (path === 'bad') throw new Error('EACCES');
+      throw new Error(`unexpected ${path}`);
+    },
+    async stat(_scope, path) { return { absolutePath: pathInWorkspace(path), version: 'v1' }; },
+    async read(_scope, path) { return { absolutePath: path, offset: 1, lines: 1, eof: true, version: 'v1', text: 'hit' }; },
+  };
+  const result = await runSearch({
+    workspaceFiles, filesystem, scope: { workspaceRoot: '/workspace', sessionId: 's' }, signal, config: DEFAULTS,
+  }, { query: 'hit' });
+  // One unreadable directory must surface as incomplete, never as a full scan.
+  assert.equal(result.truncated, true);
+  assert.match(result.rendered, /搜索不完整/);
+  assert.doesNotMatch(result.rendered, /无遗漏/);
+});
+
+test('search: entries without type/size fields are normalized, not dropped', async () => {
+  const workspaceFiles = {
+    async list(_scope, path) {
+      // Host variant that omits `type`/`size` entirely (defensive contract).
+      if (path === '.') return { entries: [
+        { name: 'src/' },
+        { name: 'tool.js' },
+      ], truncated: false };
+      if (path === 'src' || path === 'src/') return { entries: [{ name: 'inner.js' }], truncated: false };
+      throw new Error(`unexpected ${path}`);
+    },
+    async stat(_scope, path) { return { absolutePath: pathInWorkspace(path), version: 'v1' }; },
+    async read(_scope, path) { return { absolutePath: path, offset: 1, lines: 1, eof: true, version: 'v1', text: 'hit' }; },
+  };
+  const result = await runSearch({
+    workspaceFiles, filesystem, scope: { workspaceRoot: '/workspace', sessionId: 's' }, signal, config: DEFAULTS,
+  }, { query: 'hit' });
+  // Trailing-slash directory still descended into; inner file still found.
+  assert.equal(result.filesScanned, 2);
+  assert.equal(result.matches, 2);
+  assert.match(result.rendered, /src\/inner\.js/);
+  assert.match(result.rendered, /无遗漏/);
+});
+
+test('search: trailing newline must not create a phantom match line', async () => {
+  const workspaceFiles = {
+    async list(_scope) { return { entries: [{ name: 'a.txt', type: 'file', size: 8 }], truncated: false }; },
+    async stat(_scope, path) { return { absolutePath: pathInWorkspace(path), version: 'v1' }; },
+    // Host reports 2 lines ("hit\nhit\n" -> 2 real lines, not 3 elements).
+    async read(_scope, path) { return { absolutePath: path, offset: 1, lines: 2, eof: true, version: 'v1', text: 'hit\nhit\n' }; },
+  };
+  const result = await runSearch({
+    workspaceFiles, filesystem, scope: { workspaceRoot: '/workspace', sessionId: 's' }, signal, config: DEFAULTS,
+  }, { query: 'hit' });
+  assert.equal(result.occurrences, 2);
+  assert.equal(result.matches, 2);
+  assert.doesNotMatch(result.rendered, /a\.txt:3/);
+});
+
+test('read: Host that omits offset/lines in the read result still yields a stable startLine', async () => {
+  const cache = new Map();
+  const sessionState = { turn: 1, compactionGeneration: 0 };
+  const workspaceFiles = {
+    async stat(_scope, path) { return { absolutePath: pathInWorkspace(path), version: 'v1' }; },
+    // Host variant that only returns text/eof/version (no offset, no lines).
+    async read(_scope, path) { return { absolutePath: path, eof: true, version: 'v1', text: 'l1\nl2' }; },
+  };
+  const result = await runRead({
+    workspaceFiles, filesystem, scope: { workspaceRoot: '/workspace', sessionId: 's' },
+    sessionState, cache, signal, config: DEFAULTS,
+  }, { path: 'core.js', startLine: 40, lines: 2 });
+  assert.equal(result.startLine, 40);
+  assert.match(result.rendered, /^core\.js\n40: l1\n41: l2\n\[版本 v1\]$/);
+});

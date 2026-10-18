@@ -30,6 +30,36 @@ export function boundedInteger(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.floor(number)));
 }
 
+// Host implementations differ across DSH versions/clients: list entries may
+// omit `type` or `size`, stat/read results may omit `version` or `offset`.
+// Normalize defensively so a field gap degrades gracefully instead of
+// silently misclassifying entries or throwing.
+function entryIsDirectory(entry) {
+  if (entry?.type === 'directory') return true;
+  if (entry?.type === 'file') return false;
+  // Unknown/missing type: a trailing slash in the raw name is a directory hint
+  // (some Host variants only mark directories this way).
+  return typeof entry?.name === 'string' && entry.name.endsWith('/');
+}
+
+function safeReadPage(page) {
+  if (!page || typeof page !== 'object') throw new Error('workspaceFiles.read 返回了无效结果');
+  return {
+    text: typeof page.text === 'string' ? page.text : '',
+    eof: Boolean(page.eof),
+    lines: Number.isFinite(page.lines) ? page.lines : 0,
+    offset: Number.isFinite(page.offset) ? page.offset : undefined,
+    version: page.version,
+  };
+}
+
+function safeStat(stat) {
+  if (!stat || typeof stat !== 'object' || typeof stat.absolutePath !== 'string') {
+    throw new Error('workspaceFiles.stat 返回了无效结果');
+  }
+  return { ...stat, version: stat.version };
+}
+
 export function clipText(value, maxChars) {
   const chars = Array.from(String(value ?? ''));
   if (chars.length <= maxChars) return { text: chars.join(''), truncated: false };
@@ -180,43 +210,47 @@ export async function runSearch({ workspaceFiles, filesystem, scope, signal, con
       if (signal?.aborted) throw new Error('搜索已取消');
     } catch (error) {
       if (signal?.aborted || error?.name === 'AbortError' || error?.code === 'ABORT_ERR') throw error;
+      // A list failure in THIS directory makes the scan incomplete; it must
+      // not be skipped silently (that would let the full-scan attestation lie).
       truncated = true;
       skippedDirectories += 1;
       if (skippedPaths.length < 5) skippedPaths.push(`${current.path}/`);
       continue;
     }
-    if (listing.truncated) truncated = true;
-    for (const entry of listing.entries ?? []) {
+    if (listing?.truncated) truncated = true;
+  for (const entry of listing.entries ?? []) {
       if (signal?.aborted) throw new Error('搜索已取消');
+      if (typeof entry?.name !== 'string') continue;
       if (EXCLUDED_NAMES.has(entry.name)) continue;
       const relative = current.path === '.' ? entry.name : posix.join(current.path, entry.name);
-      if (entry.type === 'file' && (entry.name.startsWith('.') || SECRET_NAME.test(entry.name))) {
-        // Credential/hidden-named files: reveal the path (name only) but never read content.
-        // Full invisibility forced models into blind enumeration probes (measured 11 extra calls in benchmark v3).
-        blockedPaths.push(relative);
-        continue;
-      }
-      if (isExcludedEntry(entry.name)) continue;
-      if (entry.type === 'directory') {
+      if (entryIsDirectory(entry) || (entry.type === undefined && !isSearchableFile(entry.name))) {
+        // Directories, and type-unknown entries that do not look like
+        // searchable files (probe as a directory: a list() failure honestly
+        // marks the scan incomplete instead of silently dropping a subtree).
+        if (entry.name.startsWith('.') || SECRET_NAME.test(entry.name)) continue;
         if (current.depth < DEFAULTS.maxDepth) queue.push({ path: relative, depth: current.depth + 1 });
         else truncated = true;
-      } else if (entry.type === 'file' && isSensitivePath(relative)) {
+      } else if (entry.name.startsWith('.') || SECRET_NAME.test(entry.name)) {
         // Credential/hidden-named files: reveal the path (name only) but never read content.
         // Full invisibility forced models into blind enumeration probes (measured 11 extra calls in benchmark v3).
         blockedPaths.push(relative);
-      } else if (entry.type === 'file' && isSearchableFile(entry.name)) {
+      } else if (isSearchableFile(entry.name)) {
         if (filesScanned >= maxFiles) { truncated = true; break; }
         filesScanned += 1;
-        if (typeof entry.size === 'number' && entry.size > 1024 * 1024) { truncated = true; skippedFiles += 1; if (skippedPaths.length < 5) skippedPaths.push(relative); continue; }
+        const size = Number.isFinite(entry.size) ? entry.size : undefined;
+        if (size !== undefined && size > 1024 * 1024) { truncated = true; skippedFiles += 1; if (skippedPaths.length < 5) skippedPaths.push(relative); continue; }
         try {
-          const stat = await workspaceFiles.stat(scope, relative, signal);
+          const stat = safeStat(await workspaceFiles.stat(scope, relative, signal));
           if (signal?.aborted) throw new Error('搜索已取消');
           await assertWorkspaceTarget(filesystem, scope.workspaceRoot, stat.absolutePath, signal);
-          const page = await workspaceFiles.read(scope, stat.absolutePath, { offset: 1, limit: maxLines }, signal);
+          const page = safeReadPage(await workspaceFiles.read(scope, stat.absolutePath, { offset: 1, limit: maxLines }, signal));
           if (signal?.aborted) throw new Error('搜索已取消');
-          await assertWorkspaceTarget(filesystem, scope.workspaceRoot, page.absolutePath, signal);
+          await assertWorkspaceTarget(filesystem, scope.workspaceRoot, stat.absolutePath, signal);
           const lines = String(page.text ?? '').replace(/\r\n?/gu, '\n').split('\n');
-          for (let index = 0; index < lines.length && matches.length < maxMatches; index += 1) {
+          // A trailing newline yields one spurious empty element; do not
+          // count the element beyond the lines the Host actually reported.
+          const usableLines = page.lines > 0 ? Math.min(lines.length, page.lines) : lines.length;
+          for (let index = 0; index < usableLines && matches.length < maxMatches; index += 1) {
             // Aggregate all occurrences on the same line so callers never need
             // a per-line read-back just to count matches (benchmark v3 lesson).
             const count = lines[index].toLowerCase().split(lowerQuery).length - 1;
@@ -277,7 +311,7 @@ export async function runRead({ workspaceFiles, filesystem, scope, sessionState,
   const requestedLines = boundedInteger(input.lines, DEFAULTS.maxReadLines, 1, 10_000_000);
   const limit = Math.min(requestedLines, configuredMaxLines);
   const clamped = requestedLines > limit;
-  const stat = await workspaceFiles.stat(scope, relative, signal);
+  const stat = safeStat(await workspaceFiles.stat(scope, relative, signal));
   if (signal?.aborted) throw new Error('读取已取消');
   await assertWorkspaceTarget(filesystem, scope.workspaceRoot, stat.absolutePath, signal);
   const cacheKey = `${relative}\u0000${offset}\u0000${limit}`;
@@ -285,13 +319,16 @@ export async function runRead({ workspaceFiles, filesystem, scope, sessionState,
     const duplicate = formatReadResult({ path: relative, version: stat.version, repeated: true }, limit * 160);
     return { path: relative, version: stat.version, repeated: true, truncated: duplicate.truncated, rendered: duplicate.rendered };
   }
-  const page = await workspaceFiles.read(scope, stat.absolutePath, { offset, limit }, signal);
+  const page = safeReadPage(await workspaceFiles.read(scope, stat.absolutePath, { offset, limit }, signal));
   if (signal?.aborted) throw new Error('读取已取消');
-  await assertWorkspaceTarget(filesystem, scope.workspaceRoot, page.absolutePath, signal);
+  await assertWorkspaceTarget(filesystem, scope.workspaceRoot, stat.absolutePath, signal);
   const version = page.version ?? stat.version;
+  // Report the offset the Host actually served; fall back to the requested
+  // one when the Host omits it so startLine never comes back undefined.
+  const servedOffset = page.offset ?? offset;
   const rendered = formatReadResult({
     path: relative,
-    offset: page.offset ?? offset,
+    offset: servedOffset,
     text: page.text,
     version,
     fileContinues: !page.eof,
@@ -302,7 +339,7 @@ export async function runRead({ workspaceFiles, filesystem, scope, sessionState,
   return {
     path: relative,
     version,
-    startLine: page.offset,
+    startLine: servedOffset,
     lines: page.lines,
     eof: page.eof,
     repeated: false,

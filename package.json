@@ -1,6 +1,6 @@
 {
   "name": "dsh-ops-context",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Bounded, workspace-scoped context search and repeat-read suppression for DSH desktop and web. Cross-platform (Linux/macOS/Windows) — one package, no native deps.",
   "license": "MIT",
   "type": "module",
